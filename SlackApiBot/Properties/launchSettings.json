@@ -1,0 +1,16 @@
+{
+  "profiles": {
+    "Development Environment": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": ""
+      }
+    },
+    "Production Environment": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Production"
+      }
+    }
+  }
+}

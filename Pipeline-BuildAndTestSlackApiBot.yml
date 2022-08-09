@@ -1,0 +1,59 @@
+trigger:
+  batch: true
+  branches:
+    include:
+    - main
+    - stories/*
+    exclude:
+      - sandbox/*
+
+pool:
+  name: '<your pool name here>'
+
+variables:
+  debugBuildConfiguration: 'Debug'
+  releaseBuildConfiguration: 'Release'
+
+name: $(Build.BuildId) - $(Build.SourceBranchName) - $(Build.RequestedFor)
+
+steps:
+- task: NuGetToolInstaller@1
+
+- task: UseDotNet@2
+  inputs:
+    packageType: 'sdk'
+    version: '6.x'
+    installationPath: '$(Agent.TempDirectory)'
+
+# Build in debug mode first so we can run unit tests.
+- task: DotNetCoreCLI@2
+  displayName: 'Build .NET Core in Debug Mode'
+  inputs:
+    command: 'build'
+    arguments: '--configuration=$(debugBuildConfiguration)'
+
+# Run unit tests.
+- task: DotNetCoreCLI@2
+  displayName: 'Run Unit Tests'
+  inputs:
+    command: test
+    projects: '**/*Tests/*.csproj'
+    arguments: '--configuration $(buildConfiguration)'
+
+# Now build and publish in release mode.
+- task: DotNetCoreCLI@2
+  displayName: 'Publish Release Build'
+  inputs:
+    command: 'publish'
+    publishWebProjects: false
+    zipAfterPublish: true
+    modifyOutputPath: false
+    arguments: '--configuration $(releaseBuildConfiguration) --output $(Build.ArtifactStagingDirectory)\SlackApiBot --self-contained true --runtime win-x86'
+
+# The following task will publish the output of the build as artifacts that can be downloaded and
+# used in other pipelines.
+- task: PublishBuildArtifacts@1
+  inputs:
+    PathtoPublish: '$(Build.ArtifactStagingDirectory)\SlackApiBot'
+    ArtifactName: 'SlackApiBot'
+    publishLocation: 'Container'

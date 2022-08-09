@@ -1,0 +1,79 @@
+# Run every Wednesday at 4PM UTC (9AM/10AM MDT, depending on daylight savings).
+schedules:
+  - cron: "0 16 * * FRI"
+    displayName: Friday Morning Run
+    branches:
+      include:
+      - main
+    always: true
+
+# Ensure this pipeline ONLY runs on the schedule and isn't triggered by commits.
+trigger: none
+
+pool:
+  name: '<your pool name here>'
+
+steps:
+- task: DownloadPipelineArtifact@2
+  inputs:
+    buildType: 'specific'
+    project: '<the project ID where the BuildAndTestSlackApiBot pipeline lives>'
+    definition: '<the defintion # for the BuildAndTestSlackApiBot pipeline>'
+    buildVersionToDownload: 'latest'
+    artifactName: 'SlackApiBot'
+    targetPath: '$(System.DefaultWorkingDirectory)'
+
+- task: ExtractFiles@1
+  displayName: 'Extract SlackApiBot Package from Artifact .zip'
+  inputs:
+    archiveFilePatterns: '**/*.zip'
+    destinationFolder: '$(System.DefaultWorkingDirectory)/SlackApiBot'
+    cleanDestinationFolder: true
+    overwriteExistingFiles: false
+
+- task: PowerShell@2
+  displayName: 'Run SlackApiBot'
+  inputs:
+    targetType: 'inline'
+    script: |
+      
+      # Set the environment to use the "Production" settings.
+      $env:ASPNETCORE_ENVIRONMENT="Production"
+      
+      # Override other appSettings with pipeline variables.
+      $env:channelAnnouncer__daysToLookBackForNewChannels=$(daysToLookBackForNewChannels)
+      $env:channelAnnouncer__announcementChannelName="$(announcementChannelName)"
+      $env:channelAnnouncer__enabled=$true
+
+      # If we were given any channels to exclude via pipeline variables, do the necessary legwork
+      # to split up the pipeline string into separate environment variables
+      $channelsToExcludeCommaSeparated = "$(channelsToExcludeCommaSeparated)"
+      $channelsToExclude = @()
+      If (-Not [string]::IsNullOrWhiteSpace($channelsToExcludeCommaSeparated)) {
+        If ($channelsToExcludeCommaSeparated.Contains(",")) {
+          $channelsToExclude = $channelsToExcludeCommaSeparated -Split ","
+        }
+        Else {
+          $channelsToExclude = @($channelsToExcludeCommaSeparated)
+        }
+        
+        $channelIndex = 0
+        ForEach ($channel in $channelsToExclude) {
+          Write-Host "Excluding $channel"
+          [Environment]::SetEnvironmentVariable("channelAnnouncer__channelsToExclude__$channelIndex", "$channel", "Process")
+          $channelIndex = $channelIndex + 1
+        }
+      }
+
+      Write-Host "========================================================================="
+      Write-Host "Running Slack API Bot with the following settings:"
+      Write-Host "daysToLookBackForNewChannels = $(daysToLookBackForNewChannels)"
+      Write-Host "announcementChannelName = $(announcementChannelName)"
+      Write-Host "channelsToExclude = $(channelsToExcludeCommaSeparated)"
+      Write-Host "========================================================================="
+      Write-Host
+
+      # Run the exe.
+      $(System.DefaultWorkingDirectory)\SlackApiBot\SlackApiBot.exe "autorun"
+    failOnStderr: true
+    showWarnings: true
